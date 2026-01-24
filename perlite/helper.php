@@ -782,7 +782,7 @@ function loadSettings($rootDir)
     <meta name="twitter:card" content="summary_large_image">
 
     <!--  Non-Essential, But Recommended -->
-    <meta property="og:description" content="' . $siteDescription . '">
+    <meta property="og:description" content="' . htmlspecialchars(strip_tags($siteDescription)) . '">
     <meta property="og:site_name" content="' . $siteName . '">
     <meta name="twitter:image:alt" content="Page Callout">
     <meta name="twitter:site" content="' . $siteTwitter . '">';
