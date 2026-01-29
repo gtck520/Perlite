@@ -35,6 +35,8 @@ $jsonGraphData = getfullGraph($rootDir);
     <link rel="stylesheet" href="<?php echo $uriPath ?>.styles/app.css" type="text/css">
     <script src="<?php echo $uriPath ?>.js/highlight.min.js"></script>
 
+    <?php if (isset($auth_script)) echo $auth_script; ?>
+
     <?php echo loadSettings($rootDir); ?>
 
     <link id="highlight-js" rel="stylesheet" href="<?php echo $uriPath ?>.styles/atom-one-dark.min.css" type="text/css">

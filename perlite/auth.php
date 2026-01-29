@@ -1,11 +1,21 @@
 <?php
-session_start();
-
 // Configuration
 $api_url = 'https://auto.kanglan.vip/cozeapi/user/checkPlanetMember';
-$cookie_name = 'perlite_auth';
-$cookie_time = 60 * 60 * 24 * 7; // 7 days
-$auth_hash = md5('perlite_api_auth_v1'); // Simple hash for cookie verification
+
+// Session Configuration for No-Cookie Auth (iframe support)
+ini_set('session.use_cookies', 0);
+ini_set('session.use_only_cookies', 0);
+ini_set('session.use_trans_sid', 1);
+ini_set('session.name', 'PERLITE_SID');
+// Set long session life
+ini_set('session.gc_maxlifetime', 86400 * 7);
+
+// Manually handle Session ID from URL
+if (isset($_GET['PERLITE_SID'])) {
+    session_id($_GET['PERLITE_SID']);
+}
+
+session_start();
 
 /**
  * Check authentication via external API
@@ -25,17 +35,13 @@ function check_auth_api($params) {
         'User-Agent: Perlite-Auth-Client/1.0',
         'Accept: application/json'
     ]);
-    // Enable SSL verification if possible, or disable if facing issues in dev
-    // curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
     if ($http_code === 200 && $response) {
         $data = json_decode($response, true);
-        // Check code=1 and is_planet_member=true
         if (isset($data['code']) && $data['code'] === 1 && 
             isset($data['data']['is_planet_member']) && 
             $data['data']['is_planet_member'] === true) {
@@ -45,58 +51,64 @@ function check_auth_api($params) {
     return false;
 }
 
-// 1. Check URL Token
+// 1. Check if already logged in via Session
+if (isset($_SESSION['is_logged_in']) && $_SESSION['is_logged_in'] === true) {
+    // Inject JS to persist SID and configure AJAX
+    $sid = session_id();
+    $auth_script = "<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var perlite_sid = '$sid';
+            
+            // 1. Sync to LocalStorage
+            if (typeof localStorage !== 'undefined') {
+                if (localStorage.getItem('perlite_sid') !== perlite_sid) {
+                    localStorage.setItem('perlite_sid', perlite_sid);
+                }
+            }
+            
+            // 2. Setup jQuery AJAX to include SID
+            if (typeof $ !== 'undefined') {
+                $.ajaxSetup({
+                    data: { 'PERLITE_SID': perlite_sid }
+                });
+            }
+        });
+    </script>";
+    return; // Auth success, continue
+}
+
+// 2. Handle Token Login (URL)
 if (isset($_GET['token'])) {
-    $token = $_GET['token'];
-    if (check_auth_api(['token' => $token])) {
-        $_SESSION['logged_in'] = true;
-        setcookie($cookie_name, $auth_hash, time() + $cookie_time, "/");
-        // Remove token from URL to keep it clean (optional, but good practice)
-        // header("Location: /");
-        // exit;
+    if (check_auth_api(['token' => $_GET['token']])) {
+        $_SESSION['is_logged_in'] = true;
+        $sid = session_id();
+        // Redirect to URL with SID only (clean URL)
+        header("Location: ?PERLITE_SID=$sid");
+        exit;
     }
 }
 
-// 2. Check Logout
-if (isset($_GET['logout'])) {
-    session_destroy();
-    setcookie($cookie_name, "", time() - 3600, "/");
-    header("Location: /");
-    exit;
-}
-
-// 3. Check Session or Cookie
-$is_logged_in = false;
-
-if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    $is_logged_in = true;
-} elseif (isset($_COOKIE[$cookie_name]) && $_COOKIE[$cookie_name] === $auth_hash) {
-    $_SESSION['logged_in'] = true;
-    $is_logged_in = true;
-}
-
-// 4. Handle Login POST
-$error = '';
-if (!$is_logged_in && $_SERVER['REQUEST_METHOD'] === 'POST') {
+// 3. Handle POST Login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
 
     if ($username && $password) {
         if (check_auth_api(['username' => $username, 'password' => $password])) {
-            $_SESSION['logged_in'] = true;
-            setcookie($cookie_name, $auth_hash, time() + $cookie_time, "/");
-            header("Location: " . $_SERVER['REQUEST_URI']);
+            $_SESSION['is_logged_in'] = true;
+            $sid = session_id();
+            // Redirect to URL with SID only (clean URL, no password)
+            header("Location: ?PERLITE_SID=$sid");
             exit;
         } else {
-            $error = '鉴权失败：非知识库成员或账号密码错误';
+            $error = '鉴权失败：账号或密码错误';
         }
     } else {
         $error = '请输入用户名和密码';
     }
 }
 
-// 5. If not logged in, show login page and exit
-if (!$is_logged_in) {
+// 4. Render Login Page (Bridge)
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -104,6 +116,18 @@ if (!$is_logged_in) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>登录 - Perlite 知识库</title>
+    <script>
+        // Bridge Logic: Check localStorage for SID and Redirect
+        var sid = localStorage.getItem('perlite_sid');
+        if (sid) {
+            var url = new URL(window.location.href);
+            // Only redirect if SID is missing from URL
+            if (!url.searchParams.has('PERLITE_SID')) {
+                url.searchParams.set('PERLITE_SID', sid);
+                window.location.replace(url.toString());
+            }
+        }
+    </script>
     <style>
         body {
             background-color: #202020;
@@ -158,7 +182,7 @@ if (!$is_logged_in) {
 <body>
     <div class="login-container">
         <h2>知识库登录</h2>
-        <?php if ($error): ?>
+        <?php if (isset($error) && $error): ?>
             <div class="error"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
         <form method="post">
@@ -182,5 +206,4 @@ if (!$is_logged_in) {
 </html>
 <?php
     exit;
-}
 ?>
