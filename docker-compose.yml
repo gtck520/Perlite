@@ -11,6 +11,9 @@ services:
       - SITE_DESC=AI 自动化基地·实战交付体系课程大纲 (V2.0)
       - ABSOLUTE_PATHS=false
       - LINE_BREAKS=true
+      - AUTH_TOKEN=123456
+      - AUTH_USER=admin
+      - AUTH_PASSWORD=admin
     volumes:
       - /www/Obsidian/AI自媒体/AImedia/AI自动化基地/10_对外交付体系:/var/www/perlite/notes
       - ./perlite:/var/www/perlite

@@ -1,5 +1,7 @@
 <?php
 
+require_once 'auth.php';
+
 /*!
  * Perlite v1.6.1 (https://github.com/secure-77/Perlite)
  * Author: sec77 (https://secure77.de)
